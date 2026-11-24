@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ParHam VoiCe 3D PBR Studio</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080E1A;
+      touch-action: none;
+      user-select: none;
+    }
+    #canvas-host {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+  </style>
+  <script>
+    window.__threeLoaded = false;
+    window.addEventListener('error', function(e) {
+      if (!window.__threeLoaded && window.AndroidBridge && window.AndroidBridge.onStudioError) {
+        window.AndroidBridge.onStudioError(e.message || 'خطا در بارگذاری موتور سه‌بعدی Three.js');
+      }
+    }, true);
+    setTimeout(function() {
+      if (!window.__threeLoaded && window.AndroidBridge && window.AndroidBridge.onStudioError) {
+        window.AndroidBridge.onStudioError('بارگذاری ماژول‌های Three.js زمان‌بر شد. اتصال اینترنت یا پروکسی را بررسی کنید.');
+      }
+    }, 12000);
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-host"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    window.__threeLoaded = true;
+
+    const host = document.getElementById('canvas-host');
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: false
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(host.clientWidth, host.clientHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    host.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#09111F');
+    scene.fog = new THREE.FogExp2('#09111F', 0.045);
+
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const envTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
+    scene.environment = envTarget.texture;
+    scene.environmentIntensity = 0.95;
+
+    const camera = new THREE.PerspectiveCamera(40, host.clientWidth / host.clientHeight, 0.1, 100);
+    camera.position.set(2.5, 2.0, 3.8);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.enablePan = false;
+    controls.minDistance = 2.0;
+    controls.maxDistance = 7.2;
+    controls.minPolarAngle = 0.25;
+    controls.maxPolarAngle = Math.PI * 0.485;
+    controls.target.set(0, 1.05, 0);
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.9;
+
+    // --- Studio PBR Lighting Rig ---
+    const hemiLight = new THREE.HemisphereLight('#B8D8FF', '#121826', 0.65);
+    scene.add(hemiLight);
+
+    const keyLight = new THREE.DirectionalLight('#FFF3E0', 2.8);
+    keyLight.position.set(3.8, 5.6, 4.2);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.camera.near = 1.0;
+    keyLight.shadow.camera.far = 16.0;
+    keyLight.shadow.camera.left = -2.8;
+    keyLight.shadow.camera.right = 2.8;
+    keyLight.shadow.camera.top = 2.8;
+    keyLight.shadow.camera.bottom = -2.8;
+    keyLight.shadow.bias = -0.0005;
+    scene.add(keyLight);
+
+    const rimLight = new THREE.SpotLight('#38BDF8', 5.2, 16, Math.PI / 4, 0.55, 1.1);
+    rimLight.position.set(-4.0, 3.8, -3.5);
+    scene.add(rimLight);
+
+    const fillLight = new THREE.PointLight('#2DD4BF', 2.2, 12, 1.4);
+    fillLight.position.set(3.2, 1.4, -2.5);
+    scene.add(fillLight);
+
+    // --- Procedural Canvas2D PBR Textures ---
+    function makeBrushedMetalTextures() {
+      const size = 512;
+      const diffCanvas = document.createElement('canvas');
+      diffCanvas.width = size;
+      diffCanvas.height = size;
+      const dCtx = diffCanvas.getContext('2d');
+
+      const bumpCanvas = document.createElement('canvas');
+      bumpCanvas.width = size;
+      bumpCanvas.height = size;
+      const bCtx = bumpCanvas.getContext('2d');
+
+      dCtx.fillStyle = '#D4D9E2';
+      dCtx.fillRect(0, 0, size, size);
+      bCtx.fillStyle = '#808080';
+      bCtx.fillRect(0, 0, size, size);
+
+      for (let y = 0; y < size; y++) {
+        const v = 195 + Math.floor((Math.sin(y * 0.47) * 0.5 + Math.random() * 0.5) * 32);
+        dCtx.fillStyle = `rgb(${v},${v + 2},${v + 6})`;
+        dCtx.fillRect(0, y, size, 1);
+
+        const bv = 100 + Math.floor(Math.random() * 55);
+        bCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
+        bCtx.fillRect(0, y, size, 1);
+      }
+
+      const colorMap = new THREE.CanvasTexture(diffCanvas);
+      colorMap.colorSpace = THREE.SRGBColorSpace;
+      colorMap.wrapS = colorMap.wrapT = THREE.RepeatWrapping;
+
+      const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+      bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
+
+      return { colorMap, bumpMap };
+    }
+
+    function makeWovenMeshTextures() {
+      const size = 256;
+      const alphaCanvas = document.createElement('canvas');
+      alphaCanvas.width = size;
+      alphaCanvas.height = size;
+      const aCtx = alphaCanvas.getContext('2d');
+
+      const bumpCanvas = document.createElement('canvas');
+      bumpCanvas.width = size;
+      bumpCanvas.height = size;
+      const bCtx = bumpCanvas.getContext('2d');
+
+      aCtx.fillStyle = '#FFFFFF';
+      aCtx.fillRect(0, 0, size, size);
+      bCtx.fillStyle = '#707070';
+      bCtx.fillRect(0, 0, size, size);
+
+      const step = 16;
+      for (let y = 0; y < size; y += step) {
+        for (let x = 0; x < size; x += step) {
+          aCtx.fillStyle = '#2A2A2A';
+          aCtx.beginPath();
+          aCtx.arc(x + step * 0.5, y + step * 0.5, step * 0.29, 0, Math.PI * 2);
+          aCtx.fill();
+
+          const grad = bCtx.createRadialGradient(
+            x + step * 0.5, y + step * 0.5, 1,
+            x + step * 0.5, y + step * 0.5, step * 0.45
+          );
+          grad.addColorStop(0, '#101010');
+          grad.addColorStop(0.65, '#E0E0E0');
+          grad.addColorStop(1, '#707070');
+          bCtx.fillStyle = grad;
+          bCtx.fillRect(x, y, step, step);
+        }
+      }
+
+      const alphaMap = new THREE.CanvasTexture(alphaCanvas);
+      alphaMap.wrapS = alphaMap.wrapT = THREE.RepeatWrapping;
+      alphaMap.repeat.set(6, 5);
+
+      const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+      bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
+      bumpMap.repeat.set(6, 5);
+
+      return { alphaMap, bumpMap };
+    }
+
+    function makeCarbonFiberTextures() {
+      const size = 256;
+      const cCanvas = document.createElement('canvas');
+      cCanvas.width = size;
+      cCanvas.height = size;
+      const ctx = cCanvas.getContext('2d');
+
+      const step = 16;
+      for (let y = 0; y < size; y += step) {
+        for (let x = 0; x < size; x += step) {
+          const even = ((x / step) + (y / step)) % 2 === 0;
+          ctx.fillStyle = even ? '#1B2230' : '#293448';
+          ctx.fillRect(x, y, step, step);
+          ctx.fillStyle = even ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.2)';
+          ctx.fillRect(x + 1, y + 1, step - 2, step / 2);
+        }
+      }
+
+      const map = new THREE.CanvasTexture(cCanvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+      map.wrapS = map.wrapT = THREE.RepeatWrapping;
+      map.repeat.set(5, 5);
+      return map;
+    }
+
+    function makeStageFloorTexture() {
+      const size = 512;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      const grad = ctx.createRadialGradient(size / 2, size / 2, 20, size / 2, size / 2, size * 0.55);
+      grad.addColorStop(0, '#1D293D');
+      grad.addColorStop(0.6, '#0F172A');
+      grad.addColorStop(1, '#080E1A');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+      ctx.lineWidth = 1.5;
+      for (let r = 48; r <= 240; r += 48) {
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    const metalTex = makeBrushedMetalTextures();
+    const meshTex = makeWovenMeshTextures();
+    const carbonMap = makeCarbonFiberTextures();
+    const floorMap = makeStageFloorTexture();
+
+    // --- Shared PBR Materials (updated live by material preset) ---
+    const heroMetalMat = new THREE.MeshStandardMaterial({
+      color: '#D8B467',
+      map: metalTex.colorMap,
+      bumpMap: metalTex.bumpMap,
+      bumpScale: 0.008,
+      metalness: 0.9,
+      roughness: 0.24
+    });
+
+    const darkChassisMat = new THREE.MeshStandardMaterial({
+      color: '#171E2C',
+      map: carbonMap,
+      bumpMap: metalTex.bumpMap,
+      bumpScale: 0.004,
+      metalness: 0.55,
+      roughness: 0.36
+    });
+
+    const grilleMat = new THREE.MeshStandardMaterial({
+      color: '#E2E8F0',
+      bumpMap: meshTex.bumpMap,
+      bumpScale: 0.035,
+      alphaMap: meshTex.alphaMap,
+      transparent: true,
+      alphaTest: 0.15,
+      side: THREE.DoubleSide,
+      metalness: 0.88,
+      roughness: 0.28
+    });
+
+    const accentGlowMat = new THREE.MeshStandardMaterial({
+      color: '#2DD4BF',
+      emissive: '#14B8A6',
+      emissiveIntensity: 1.6,
+      metalness: 0.3,
+      roughness: 0.2
+    });
+
+    const rubberMat = new THREE.MeshStandardMaterial({
+      color: '#111622',
+      metalness: 0.08,
+      roughness: 0.78
+    });
+
+    // --- Studio Floor Pedestal ---
+    const floor = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.6, 2.7, 0.08, 64),
+      new THREE.MeshStandardMaterial({
+        map: floorMap,
+        metalness: 0.35,
+        roughness: 0.45
+      })
+    );
+    floor.position.y = -0.04;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const floorRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.58, 0.015, 16, 96),
+      accentGlowMat
+    );
+    floorRing.rotation.x = Math.PI / 2;
+    floorRing.position.y = 0.005;
+    scene.add(floorRing);
+
+    // --- Model 1: PBR Studio Condenser Microphone ---
+    const micGroup = new THREE.Group();
+
+    const micBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.56, 0.64, 0.11, 48),
+      darkChassisMat
+    );
+    micBase.position.y = 0.055;
+    micBase.castShadow = true;
+    micBase.receiveShadow = true;
+    micGroup.add(micBase);
+
+    const micBaseTrim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.56, 0.016, 16, 64),
+      heroMetalMat
+    );
+    micBaseTrim.rotation.x = Math.PI / 2;
+    micBaseTrim.position.y = 0.11;
+    micGroup.add(micBaseTrim);
+
+    const micStandStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.075, 0.78, 24),
+      heroMetalMat
+    );
+    micStandStem.position.y = 0.48;
+    micStandStem.castShadow = true;
+    micGroup.add(micStandStem);
+
+    // Shock mount outer cage
+    const shockOuter = new THREE.Mesh(
+      new THREE.TorusGeometry(0.46, 0.025, 16, 48),
+      darkChassisMat
+    );
+    shockOuter.rotation.x = Math.PI / 2;
+    shockOuter.position.y = 0.96;
+    shockOuter.castShadow = true;
+    micGroup.add(shockOuter);
+
+    const shockInner = new THREE.Mesh(
+      new THREE.TorusGeometry(0.32, 0.022, 16, 48),
+      rubberMat
+    );
+    shockInner.rotation.x = Math.PI / 2;
+    shockInner.position.y = 0.96;
+    micGroup.add(shockInner);
+
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI) / 2;
+      const strut = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012, 0.012, 0.22, 12),
+        heroMetalMat
+      );
+      strut.position.set(Math.cos(angle) * 0.39, 0.96, Math.sin(angle) * 0.39);
+      strut.rotation.z = Math.PI / 2;
+      strut.rotation.y = -angle;
+      micGroup.add(strut);
+    }
+
+    // Mic lower body cylinder
+    const micBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.21, 0.86, 40),
+      heroMetalMat
+    );
+    micBody.position.y = 1.24;
+    micBody.castShadow = true;
+    micGroup.add(micBody);
+
+    const micGlowRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.242, 0.014, 16, 48),
+      accentGlowMat
+    );
+    micGlowRing.rotation.x = Math.PI / 2;
+    micGlowRing.position.y = 1.65;
+    micGroup.add(micGlowRing);
+
+    // Internal capsule core
+    const capsuleCore = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 0.36, 32),
+      accentGlowMat
+    );
+    capsuleCore.position.y = 1.88;
+    micGroup.add(capsuleCore);
+
+    // Woven metal mesh grille head
+    const grilleBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.23, 0.23, 0.42, 40, 1, true),
+      grilleMat
+    );
+    grilleBody.position.y = 1.88;
+    grilleBody.castShadow = true;
+    micGroup.add(grilleBody);
+
+    const grilleDome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.23, 36, 20, 0, Math.PI * 2, 0, Math.PI / 2),
+      grilleMat
+    );
+    grilleDome.position.y = 2.09;
+    grilleDome.castShadow = true;
+    micGroup.add(grilleDome);
+
+    // Pop-filter screen arm
+    const popFilterRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.29, 0.018, 16, 48),
+      darkChassisMat
+    );
+    popFilterRing.position.set(0, 1.88, 0.44);
+    popFilterRing.castShadow = true;
+    micGroup.add(popFilterRing);
+
+    const popFilterScreen = new THREE.Mesh(
+      new THREE.CircleGeometry(0.28, 40),
+      grilleMat
+    );
+    popFilterScreen.position.set(0, 1.88, 0.44);
+    micGroup.add(popFilterScreen);
+
+    // Reactive acoustic wave rings
+    const micWaves = [];
+    for (let i = 0; i < 3; i++) {
+      const wave = new THREE.Mesh(
+        new THREE.TorusGeometry(0.45 + i * 0.18, 0.009, 12, 64),
+        accentGlowMat.clone()
+      );
+      wave.rotation.x = Math.PI / 2;
+      wave.position.y = 1.88;
+      micGroup.add(wave);
+      micWaves.push(wave);
+    }
+
+    scene.add(micGroup);
+
+    // --- Model 2: PBR Studio Reference Monitor Speaker ---
+    const monitorGroup = new THREE.Group();
+    monitorGroup.visible = false;
+
+    const cabinet = new THREE.Mesh(
+      new THREE.BoxGeometry(1.18, 1.72, 1.04),
+      darkChassisMat
+    );
+    cabinet.position.y = 0.94;
+    cabinet.castShadow = true;
+    cabinet.receiveShadow = true;
+    monitorGroup.add(cabinet);
+
+    const frontBaffle = new THREE.Mesh(
+      new THREE.BoxGeometry(1.06, 1.60, 0.08),
+      rubberMat
+    );
+    frontBaffle.position.set(0, 0.94, 0.51);
+    monitorGroup.add(frontBaffle);
+
+    const wooferRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.37, 0.032, 18, 56),
+      heroMetalMat
+    );
+    wooferRing.position.set(0, 0.68, 0.55);
+    monitorGroup.add(wooferRing);
+
+    const wooferCone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.35, 0.14, 48, 1, true),
+      new THREE.MeshStandardMaterial({
+        map: carbonMap,
+        metalness: 0.35,
+        roughness: 0.42,
+        side: THREE.DoubleSide
+      })
+    );
+    wooferCone.rotation.x = -Math.PI / 2;
+    wooferCone.position.set(0, 0.68, 0.49);
+    monitorGroup.add(wooferCone);
+
+    const dustCap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+      heroMetalMat
+    );
+    dustCap.rotation.x = Math.PI / 2;
+    dustCap.position.set(0, 0.68, 0.48);
+    monitorGroup.add(dustCap);
+
+    const tweeterGuide = new THREE.Mesh(
+      new THREE.TorusGeometry(0.17, 0.025, 16, 40),
+      heroMetalMat
+    );
+    tweeterGuide.position.set(0, 1.36, 0.55);
+    monitorGroup.add(tweeterGuide);
+
+    const tweeterDome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 28, 16),
+      accentGlowMat
+    );
+    tweeterDome.scale.set(1, 1, 0.45);
+    tweeterDome.position.set(0, 1.36, 0.54);
+    monitorGroup.add(tweeterDome);
+
+    const monitorBaseStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 0.03, 0.04),
+      accentGlowMat
+    );
+    monitorBaseStrip.position.set(0, 0.22, 0.55);
+    monitorGroup.add(monitorBaseStrip);
+
+    scene.add(monitorGroup);
+
+    // --- Model 3: PBR Acoustic Resonance Core ---
+    const coreGroup = new THREE.Group();
+    coreGroup.visible = false;
+
+    const innerCore = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.46, 3),
+      heroMetalMat
+    );
+    innerCore.position.y = 1.15;
+    innerCore.castShadow = true;
+    coreGroup.add(innerCore);
+
+    const outerCage = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.68, 1),
+      new THREE.MeshStandardMaterial({
+        color: '#2DD4BF',
+        emissive: '#0D9488',
+        emissiveIntensity: 0.9,
+        wireframe: true,
+        metalness: 0.7,
+        roughness: 0.25
+      })
+    );
+    outerCage.position.y = 1.15;
+    coreGroup.add(outerCage);
+
+    const orbitRingA = new THREE.Mesh(
+      new THREE.TorusGeometry(0.92, 0.02, 16, 72),
+      heroMetalMat
+    );
+    orbitRingA.position.y = 1.15;
+    orbitRingA.rotation.x = Math.PI / 3;
+    coreGroup.add(orbitRingA);
+
+    const orbitRingB = new THREE.Mesh(
+      new THREE.TorusGeometry(1.06, 0.015, 16, 72),
+      accentGlowMat
+    );
+    orbitRingB.position.y = 1.15;
+    orbitRingB.rotation.y = Math.PI / 3;
+    orbitRingB.rotation.x = -Math.PI / 5;
+    coreGroup.add(orbitRingB);
+
+    scene.add(coreGroup);
+
+    // --- State & Bridge API ---
+    let activeSceneId = 'condenser_mic';
+    let liveLevel = 0.12;
+    let livePitch = 1.0;
+    let liveSpeed = 1.0;
+    let liveActive = false;
+
+    const LIGHTING_PRESETS = {
+      warm_studio: {
+        bg: '#09111F',
+        key: '#FFF3E0',
+        rim: '#38BDF8',
+        fill: '#2DD4BF',
+        glow: '#14B8A6',
+        env: 0.95
+      },
+      neon_cyber: {
+        bg: '#070B18',
+        key: '#E0F2FE',
+        rim: '#A855F7',
+        fill: '#22D3EE',
+        glow: '#38BDF8',
+        env: 1.05
+      },
+      moonlight_matte: {
+        bg: '#0C121C',
+        key: '#E2E8F0',
+        rim: '#60A5FA',
+        fill: '#F59E0B',
+        glow: '#F59E0B',
+        env: 0.75
+      }
+    };
+
+    const MATERIAL_PRESETS = {
+      brushed_gold: { color: '#D8B467', metalness: 0.92, roughness: 0.22 },
+      titanium_matte: { color: '#CBD5E1', metalness: 0.85, roughness: 0.34 },
+      carbon_obsidian: { color: '#334155', metalness: 0.72, roughness: 0.28 }
+    };
+
+    function applyCameraFrame(immediate = false) {
+      const targetPos = activeSceneId === 'studio_monitor'
+        ? new THREE.Vector3(2.2, 1.55, 3.6)
+        : new THREE.Vector3(2.4, 1.85, 3.5);
+      const targetLook = activeSceneId === 'studio_monitor'
+        ? new THREE.Vector3(0, 0.95, 0)
+        : new THREE.Vector3(0, 1.12, 0);
+
+      if (immediate) {
+        camera.position.copy(targetPos);
+        controls.target.copy(targetLook);
+        controls.update();
+      } else {
+        camera.position.copy(targetPos);
+        controls.target.copy(targetLook);
+        controls.update();
+      }
+    }
+
+    window.Studio3D = {
+      setScene(sceneId) {
+        activeSceneId = sceneId;
+        micGroup.visible = sceneId === 'condenser_mic';
+        monitorGroup.visible = sceneId === 'studio_monitor';
+        coreGroup.visible = sceneId === 'voice_core';
+        applyCameraFrame(false);
+      },
+      setLighting(presetId) {
+        const p = LIGHTING_PRESETS[presetId] || LIGHTING_PRESETS.warm_studio;
+        scene.background.set(p.bg);
+        scene.fog.color.set(p.bg);
+        keyLight.color.set(p.key);
+        rimLight.color.set(p.rim);
+        fillLight.color.set(p.fill);
+        accentGlowMat.color.set(p.glow);
+        accentGlowMat.emissive.set(p.glow);
+        scene.environmentIntensity = p.env;
+      },
+      setMaterial(matId) {
+        const m = MATERIAL_PRESETS[matId] || MATERIAL_PRESETS.brushed_gold;
+        heroMetalMat.color.set(m.color);
+        heroMetalMat.metalness = m.metalness;
+        heroMetalMat.roughness = m.roughness;
+      },
+      setAutoRotate(enabled) {
+        controls.autoRotate = Boolean(enabled);
+      },
+      resetCamera() {
+        applyCameraFrame(true);
+      },
+      setLiveTelemetry(level, pitch, speed, active) {
+        liveLevel = Math.max(0.05, Math.min(1.0, Number(level) || 0.12));
+        livePitch = Math.max(0.6, Math.min(1.5, Number(pitch) || 1.0));
+        liveSpeed = Math.max(0.6, Math.min(1.6, Number(speed) || 1.0));
+        liveActive = Boolean(active);
+      }
+    };
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+      const pulse = liveActive
+        ? (0.25 + liveLevel * 0.75 + Math.sin(t * 7.5 * liveSpeed) * 0.18)
+        : (0.14 + Math.sin(t * 2.1) * 0.06);
+
+      accentGlowMat.emissiveIntensity = 1.0 + pulse * 1.6;
+
+      if (micGroup.visible) {
+        micWaves.forEach((w, idx) => {
+          const phase = ((t * (0.7 * liveSpeed) + idx * 0.33) % 1);
+          const s = 0.8 + phase * (0.85 + pulse * 0.7);
+          w.scale.set(s, s, 1);
+          w.material.opacity = (1 - phase) * (liveActive ? 0.95 : 0.45);
+          w.material.transparent = true;
+        });
+      }
+
+      if (monitorGroup.visible) {
+        const excursion = Math.sin(t * 14 * liveSpeed) * 0.032 * (liveActive ? (0.4 + liveLevel) : 0.25);
+        wooferCone.position.z = 0.49 + excursion;
+        dustCap.position.z = 0.48 + excursion;
+      }
+
+      if (coreGroup.visible) {
+        const s = 0.94 + pulse * 0.24 * livePitch;
+        innerCore.scale.setScalar(s);
+        innerCore.rotation.y = t * 0.45 * liveSpeed;
+        outerCage.rotation.y = -t * 0.32 * liveSpeed;
+        outerCage.rotation.x = Math.sin(t * 0.6) * 0.25;
+        orbitRingA.rotation.z = t * 0.65 * liveSpeed;
+        orbitRingB.rotation.z = -t * 0.52 * liveSpeed;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function onResize() {
+      const w = host.clientWidth || window.innerWidth;
+      const h = host.clientHeight || window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    window.addEventListener('resize', onResize);
+    applyCameraFrame(true);
+    animate();
+
+    if (window.AndroidBridge && window.AndroidBridge.onStudioReady) {
+      window.AndroidBridge.onStudioReady();
+    }
+  </script>
+</body>
+</html>

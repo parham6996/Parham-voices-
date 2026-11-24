@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">ParHam VoiCe</string>
+    <string name="nav_studio">استودیو گویندگی</string>
+    <string name="nav_cloning">کلون و آموزش</string>
+    <string name="nav_library">آرشیو صداها</string>
+    <string name="nav_support">پشتیبانی هوشمند</string>
+    <string name="cd_record_voice">شروع یا توقف ضبط صدا</string>
+    <string name="cd_play_audio">پخش یا توقف فایل صوتی</string>
+    <string name="cd_share_audio">اشتراک‌گذاری فایل صوتی</string>
+    <string name="cd_delete_item">حذف مورد</string>
+    <string name="cd_send_message">ارسال پیام به پشتیبان</string>
+</resources>

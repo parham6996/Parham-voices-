@@ -1,0 +1,6 @@
+{
+  "name": "ParHam VoiCe",
+  "description": "کلونینگ صدای شخصی و تبدیل متن به گفتار طبیعی فارسی با پشتیبانی از لهجه‌ها، لحن، سرعت و احساسات",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="voice_samples" path="voice_samples/" />
+    <files-path name="generated_audio" path="generated_audio/" />
+    <files-path name="dub_exports" path="dub_exports/" />
+    <files-path name="podcasts" path="podcasts/" />
+    <cache-path name="shared_cache" path="." />
+</paths>
